@@ -1,0 +1,118 @@
+library(readxl)
+library(ggplot2)
+library(tidyverse)
+library(lubridate)
+library(explore)
+library(SentimentAnalysis)
+library(dplyr)
+library(tm)
+library(wordcloud)
+library(RColorBrewer)
+library(syuzhet)
+library(stopwords)
+
+#set up working directory and read data
+setwd("~/Documents/text analysis") 
+consumer_complaints <- read_excel("consumer_complaints.xlsx") 
+
+# Adjusting blank cells to "N/A" for specified fields individually
+consumer_complaints$`Consumer consent provided?` <- ifelse(consumer_complaints$`Consumer consent provided?` == "", "N/A", consumer_complaints$`Consumer consent provided?`)
+consumer_complaints$`Sub-product` <- ifelse(consumer_complaints$`Sub-product` == "", "N/A", consumer_complaints$`Sub-product`)
+consumer_complaints$`Sub-issue` <- ifelse(consumer_complaints$`Sub-issue` == "", "N/A", consumer_complaints$`Sub-issue`)
+consumer_complaints <- with(consumer_complaints, consumer_complaints[!(`Consumer complaint narrative` == "" | is.na(`Consumer complaint narrative`)), ])
+consumer_complaints$`Company public response` <- ifelse(consumer_complaints$`Company public response` == "", "N/A", consumer_complaints$`Company public response`)
+consumer_complaints$Tags <- ifelse(consumer_complaints$Tags == "", "N/A", consumer_complaints$Tags)
+consumer_complaints$`Consumer disputed?` <- ifelse(consumer_complaints$`Consumer disputed?` == "", "N/A", consumer_complaints$`Consumer disputed?`)
+consumer_complaints$`Company public response` <- ifelse(consumer_complaints$`Company public response` == "", "N/A", consumer_complaints$`Company public response`)
+
+
+# Ensure dates are in Date format
+consumer_complaints$`Date received` <- as.Date(consumer_complaints$`Date received`, format = "%Y-%m-%d")
+consumer_complaints$`Date sent to company` <- as.Date(consumer_complaints$`Date sent to company`, format = "%Y-%m-%d")
+
+
+# Summarize complaints by product
+complaints_by_product <- consumer_complaints %>%
+  group_by(`Product`) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count))
+
+# Create a bar chart to show different product complaints and their counts
+ggplot(complaints_by_product, aes(x = reorder(`Product`, -Count), y = Count)) +
+  geom_bar(stat = "identity", fill = "pink") +
+  theme_minimal() +
+  labs(title = "Count of Complaints by Product", x = "Product", y = "Number of Complaints") +
+  coord_flip()
+
+# Summarize complaints by company and arrange in descending order
+top_companies_complaints <- consumer_complaints %>%
+  group_by(Company) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count)) %>%
+  slice(1:10) # Select the top 10 companies
+
+# Create a bar chart for the top companies by complaint count
+ggplot(top_companies_complaints, aes(x = reorder(Company, -Count), y = Count, fill = Company)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Count), position = position_dodge(width = 0.9), vjust = -0.2) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+  labs(title = "Top 10 Companies by Complaint Count", x = "Company", y = "Number of Complaints") +
+  coord_flip()
+
+# Summarize complaints by state and arrange in descending order
+top_state_complaints <- consumer_complaints %>%
+  group_by(State) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count)) %>%
+  slice(1:10)
+
+# Create a bar chart for the top State by complaint count
+ggplot(top_state_complaints, aes(x = reorder(State, -Count), y = Count, fill = State)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Count), position = position_dodge(width = 0.9), vjust = -0.2) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+  labs(title = "Top 10 State by Complaint Count", x = "State", y = "Number of Complaints") +
+  coord_flip()
+
+
+
+
+complaint_tidy <- consumer_complaints %>%
+  unnest_tokens(word, `Consumer complaint narrative`) %>%
+  anti_join(get_stopwords(), by = "word")
+
+# Simplified Sentiment Analysis with 'bing'
+bing_sentiments <- complaint_tidy %>%
+  inner_join(get_sentiments("bing"), by = "word") %>%
+  count(sentiment) %>%
+  ggplot(aes(x = sentiment, y = n, fill = sentiment)) +
+  geom_col() +
+  theme_minimal() +
+  labs(x = NULL, y = "Frequency", title = "Bing Sentiment Analysis")
+
+print(bing_sentiments)
+
+
+# Simplified Sentiment Analysis with 'nrc'
+nrc_sentiments <- complaint_tidy %>%
+  inner_join(get_sentiments("nrc"), by = "word") %>%
+  count(sentiment) %>%
+  ggplot(aes(x = sentiment, y = n, fill = sentiment)) +
+  geom_col() +
+  theme_minimal() +
+  labs(x = NULL, y = "Frequency", title = "NRC Sentiment Analysis")
+
+
+print(nrc_sentiments)
+
+# Create a word cloud
+
+# Filter out "XXXX" from the column
+filtered_words <- consumer_complaints$`Consumer complaint narrative`[!grepl("XXXX", consumer_complaints$`Consumer complaint narrative`, fixed = TRUE)]
+wordcloud(filtered_words, 
+          max.words = 50, 
+          scale = c(3, 0.5), 
+          random.order = FALSE, 
+          colors = brewer.pal(8, "Dark2"))
